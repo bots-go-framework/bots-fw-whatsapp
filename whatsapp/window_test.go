@@ -203,3 +203,27 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+// TestNewWindowGate_returnsUsableSendGate pins the exported constructor the README
+// documents, and that it wires a real clock rather than a zero func.
+func TestNewWindowGate_returnsUsableSendGate(t *testing.T) {
+	g := NewWindowGate(LastInboundFunc(func(context.Context, string) (time.Time, error) {
+		return time.Now().Add(-time.Hour), nil
+	}))
+	m := botmsg.MessageFromBot{ToChat: ChatID("16505551234")}
+	if err := g.CanSend(context.Background(), m); err != nil {
+		t.Errorf("expected a permitted send an hour after the last reply, got: %v", err)
+	}
+}
+
+// TestNewWindowGate_panicsOnNilProvider pins the refusal to build a gate that
+// cannot determine the window — it would look like protection while permitting
+// every out-of-window send.
+func TestNewWindowGate_panicsOnNilProvider(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected a panic on a nil LastInboundProvider")
+		}
+	}()
+	NewWindowGate(nil)
+}

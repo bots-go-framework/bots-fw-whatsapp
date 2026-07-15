@@ -57,6 +57,23 @@ type windowGate struct {
 	now         func() time.Time
 }
 
+// NewWindowGate returns a botsfw.SendGate enforcing the 24-hour customer service
+// window, using lastInbound to determine when the user last replied.
+//
+// Attach it to a responder so the framework consults it before every send:
+// bots-fw treats a responder that does not implement botsfw.SendGate as always
+// permitting, so a WhatsApp responder that omits the gate will silently attempt
+// out-of-window sends.
+//
+// Panics if lastInbound is nil: a gate that cannot determine the window is worse
+// than no gate, because it looks like protection while permitting everything.
+func NewWindowGate(lastInbound LastInboundProvider) botsfw.SendGate {
+	if lastInbound == nil {
+		panic("lastInbound must not be nil")
+	}
+	return windowGate{lastInbound: lastInbound, now: time.Now}
+}
+
 // IsWithinWindow reports whether lastInbound is recent enough to permit a
 // free-form send at now.
 //
