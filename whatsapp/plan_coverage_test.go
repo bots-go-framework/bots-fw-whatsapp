@@ -109,16 +109,20 @@ func TestRenderTemplateMatchingQuickReplies(t *testing.T) {
 	}
 }
 
-// TestRenderMediaOnlyEmptyText covers mediaMessage's "[image]" fallback when the
-// plan carries media but no text and no caption.
-func TestRenderMediaOnlyEmptyText(t *testing.T) {
+// TestRenderMediaOnlyByID covers mediaMessage building a native image-by-ID
+// message when the plan carries a MediaID but no text and no caption.
+func TestRenderMediaOnlyByID(t *testing.T) {
 	plan := botplan.MessagePlan{Media: &botplan.MediaRef{MediaID: "id123"}}
 	msgs, err := NewRenderer(nil).Render(plan, waTarget(true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msgs[0].Text != "[image]" {
-		t.Errorf("want [image] fallback, got %q", msgs[0].Text)
+	img, ok := msgs[0].BotMessage.(sendImageMessage)
+	if !ok {
+		t.Fatalf("want sendImageMessage, got %T", msgs[0].BotMessage)
+	}
+	if img.mediaID != "id123" || img.link != "" {
+		t.Errorf("want mediaID=id123, got %+v", img)
 	}
 }
 

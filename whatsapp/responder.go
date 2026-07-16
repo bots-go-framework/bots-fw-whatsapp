@@ -141,6 +141,10 @@ func (r *Responder) toSendable(to string, m botmsg.MessageFromBot) (wabotapi.Sen
 		return bm.toConfig(to), nil, nil
 	case *TemplateMessage:
 		return bm.toConfig(to), nil, nil
+	case sendImageMessage:
+		return bm.toConfig(to), nil, nil
+	case sendCTAURLMessage:
+		return bm.toConfig(to), nil, nil
 	}
 
 	sendable, notes, err := degradeToSendable(to, m)

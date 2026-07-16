@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bots-go-framework/bots-api-whatsapp/wabotapi"
 	"github.com/bots-go-framework/bots-fw/botmsg"
 	"github.com/bots-go-framework/bots-fw/botplan"
 	"github.com/bots-go-framework/bots-go-core/botkb"
@@ -152,17 +153,23 @@ func (r *Renderer) renderFreeForm(plan botplan.MessagePlan) ([]botmsg.MessageFro
 		msgs = append(msgs, promptMsg)
 		notes = append(notes, pnotes...)
 		body = "" // consumed by the prompt message
-	} else if body != "" {
-		msgs = append(msgs, textMessage(body))
 	}
 
-	// URL action: its own message. cta_url cannot combine with reply buttons, and
-	// the released wabotapi (v0.2.0) has no cta_url config, so the link is carried
-	// as body text where WhatsApp auto-hyperlinks it. Recorded as a loss.
+	// URL action: its own interactive cta_url message. cta_url cannot combine
+	// with reply buttons (whatsapp/cta-url-button). When the plan carries a
+	// prompt, the prompt message was already emitted above and body is now empty;
+	// the cta_url body falls back to the action label. When the plan carries text
+	// but no prompt, body carries the plan text and becomes the cta_url body.
 	if plan.URLAction != nil {
-		urlMsg, unotes := r.urlActionMessage(plan.URLAction)
+		urlMsg, unotes := r.urlActionMessage(plan.URLAction, body)
 		msgs = append(msgs, urlMsg)
 		notes = append(notes, unotes...)
+		body = "" // consumed by the cta_url message
+	}
+
+	// Remaining body (no prompt, no media, no URLAction consumed it).
+	if body != "" {
+		msgs = append(msgs, textMessage(body))
 	}
 
 	return msgs, notes
@@ -222,48 +229,55 @@ func firstPageWithMore(choices []botplan.Choice, pageIndex int) ([]botplan.Choic
 	return page, note
 }
 
-// urlActionMessage renders a URL action.
+// urlActionMessage renders a URL action as a native cta_url interactive button.
 //
-// The released wabotapi has no cta_url config; until it does, the link rides in
-// the body where WhatsApp auto-hyperlinks it (whatsapp/text-formatting
-// urlsAutoHyperlinked). Recorded so the divergence from an in-window cta_url
-// button is observable.
-func (r *Renderer) urlActionMessage(a *botplan.URLAction) (botmsg.MessageFromBot, []Degradation) {
-	body := fmt.Sprintf("%s: %s", a.Label, a.URL)
-	notes := []Degradation{Degradation(fmt.Sprintf(
-		"URL action %q rendered as an auto-hyperlinked body line: the cta_url interactive button is not yet available in this client", a.Label))}
-	return textMessage(body), notes
+// The label is capped at wabotapi.MaxCtaDisplayTextLength (20 characters) and
+// truncated with an ellipsis when it exceeds the limit, which is recorded as a
+// degradation. The body is the plan text that rode with the URLAction (may be
+// empty — cta_url requires a non-empty body, so a placeholder is used).
+func (r *Renderer) urlActionMessage(a *botplan.URLAction, body string) (botmsg.MessageFromBot, []Degradation) {
+	var notes []Degradation
+	displayText := a.Label
+	if truncated := truncate(displayText, wabotapi.MaxCtaDisplayTextLength); truncated != displayText {
+		notes = append(notes, Degradation(fmt.Sprintf(
+			"URL action label %q truncated to %d characters for cta_url display_text", a.Label, wabotapi.MaxCtaDisplayTextLength)))
+		displayText = truncated
+	}
+	ctaBody := body
+	if ctaBody == "" {
+		ctaBody = a.Label
+	}
+	m := botmsg.MessageFromBot{
+		BotMessage: sendCTAURLMessage{
+			body:        ctaBody,
+			displayText: displayText,
+			url:         a.URL,
+		},
+	}
+	return m, notes
 }
 
-// mediaMessage renders an image.
+// mediaMessage renders an image as a native WhatsApp image message.
 //
-// The released wabotapi has no image config; until it does, the caption (with
-// the body appended) is sent as text and the image URL, if any, rides as an
-// auto-hyperlinked line. Recorded as a loss.
+// MediaID is preferred over ImageURL when both are set (Meta recommends
+// uploaded assets — whatsapp/send-image). The caption is the MediaRef's
+// Caption; when body is also non-empty it is appended after a newline.
 func (r *Renderer) mediaMessage(m *botplan.MediaRef, body string) (botmsg.MessageFromBot, []Degradation) {
-	parts := make([]string, 0, 3)
-	if m.Caption != "" {
-		parts = append(parts, m.Caption)
-	}
+	caption := m.Caption
 	if body != "" {
-		parts = append(parts, body)
-	}
-	if m.ImageURL != "" {
-		parts = append(parts, m.ImageURL)
-	}
-	text := ""
-	for i, p := range parts {
-		if i > 0 {
-			text += "\n"
+		if caption != "" {
+			caption += "\n" + body
+		} else {
+			caption = body
 		}
-		text += p
 	}
-	if text == "" {
-		text = "[image]"
+	img := sendImageMessage{caption: caption}
+	if m.MediaID != "" {
+		img.mediaID = m.MediaID
+	} else {
+		img.link = m.ImageURL
 	}
-	notes := []Degradation{Degradation(
-		"image sent as text: the image message type is not yet available in this client")}
-	return textMessage(text), notes
+	return botmsg.MessageFromBot{BotMessage: img}, nil
 }
 
 // textMessage builds a plain body MessageFromBot.

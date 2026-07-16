@@ -296,3 +296,76 @@ func TestNewResponder_panicsOnNilClient(t *testing.T) {
 		return time.Time{}, nil
 	}))
 }
+
+// TestResponder_sendsNativeImage pins that a sendImageMessage (by link) rides
+// through toSendable as a native image message (type "image").
+func TestResponder_sendsNativeImage(t *testing.T) {
+	var body []byte
+	ts := sendOK(t, &body)
+	defer ts.Close()
+	r := newTestResponder(ts)
+
+	m := botmsg.MessageFromBot{
+		ToChat:     ChatID("16505551234"),
+		BotMessage: sendImageMessage{link: "https://x.io/a.jpg", caption: "cap"},
+	}
+	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(body, &sent); err != nil {
+		t.Fatalf("bad body: %v", err)
+	}
+	if sent["type"] != "image" {
+		t.Errorf("type = %v, want image", sent["type"])
+	}
+	if !strings.Contains(string(body), "https://x.io/a.jpg") {
+		t.Errorf("link must appear in the payload: %s", body)
+	}
+}
+
+// TestResponder_sendsNativeImageByID pins the mediaID path in sendImageMessage.
+func TestResponder_sendsNativeImageByID(t *testing.T) {
+	var body []byte
+	ts := sendOK(t, &body)
+	defer ts.Close()
+	r := newTestResponder(ts)
+
+	m := botmsg.MessageFromBot{
+		ToChat:     ChatID("16505551234"),
+		BotMessage: sendImageMessage{mediaID: "media-abc-123"},
+	}
+	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(body), "media-abc-123") {
+		t.Errorf("media ID must appear in the payload: %s", body)
+	}
+}
+
+// TestResponder_sendsNativeCTAURL pins that a sendCTAURLMessage rides through
+// toSendable as a native cta_url interactive message.
+func TestResponder_sendsNativeCTAURL(t *testing.T) {
+	var body []byte
+	ts := sendOK(t, &body)
+	defer ts.Close()
+	r := newTestResponder(ts)
+
+	m := botmsg.MessageFromBot{
+		ToChat:     ChatID("16505551234"),
+		BotMessage: sendCTAURLMessage{body: "Visit us", displayText: "Open", url: "https://x.io"},
+	}
+	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(body, &sent); err != nil {
+		t.Fatalf("bad body: %v", err)
+	}
+	if sent["type"] != "interactive" {
+		t.Errorf("type = %v, want interactive", sent["type"])
+	}
+	if !strings.Contains(string(body), "cta_url") {
+		t.Errorf("interactive type cta_url must appear: %s", body)
+	}
+}

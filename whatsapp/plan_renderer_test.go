@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bots-go-framework/bots-api-whatsapp/wabotapi"
 	"github.com/bots-go-framework/bots-fw/botmsg"
 	"github.com/bots-go-framework/bots-fw/botplan"
 	"github.com/bots-go-framework/bots-go-core/botkb"
@@ -170,13 +171,20 @@ func TestRenderPromptPlusURLActionTwoMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(msgs) != 2 {
-		t.Fatalf("want 2 messages (prompt then url), got %d", len(msgs))
+		t.Fatalf("want 2 messages (prompt then cta_url), got %d", len(msgs))
 	}
 	if msgs[0].Keyboard == nil {
 		t.Error("first message should be the prompt")
 	}
-	if !strings.Contains(msgs[1].Text, "https://x.io/d/1") {
-		t.Errorf("second message should carry the URL, got %q", msgs[1].Text)
+	cta, ok := msgs[1].BotMessage.(sendCTAURLMessage)
+	if !ok {
+		t.Fatalf("second message should be a native cta_url, got %T", msgs[1].BotMessage)
+	}
+	if cta.url != "https://x.io/d/1" {
+		t.Errorf("cta_url URL = %q, want https://x.io/d/1", cta.url)
+	}
+	if cta.displayText != "View" {
+		t.Errorf("cta_url display_text = %q, want View", cta.displayText)
 	}
 }
 
@@ -198,7 +206,8 @@ func TestRenderLivePanelIsAppendWithNote(t *testing.T) {
 	}
 }
 
-func TestRenderMediaReported(t *testing.T) {
+func TestRenderMediaNative(t *testing.T) {
+	// Media renders as a native image message (no degradation note).
 	var lost []Degradation
 	r := NewRenderer(nil).OnDegradation(func(_ context.Context, _ botmsg.MessageFromBot, notes []Degradation) {
 		lost = append(lost, notes...)
@@ -208,11 +217,19 @@ func TestRenderMediaReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(msgs[0].Text, "cap") || !strings.Contains(msgs[0].Text, "https://x.io/a.jpg") {
-		t.Errorf("media message should carry caption and url: %q", msgs[0].Text)
+	img, ok := msgs[0].BotMessage.(sendImageMessage)
+	if !ok {
+		t.Fatalf("want sendImageMessage, got %T", msgs[0].BotMessage)
 	}
-	if !containsNote(lost, "image sent as text") {
-		t.Errorf("media degradation should be reported, notes=%v", lost)
+	if img.link != "https://x.io/a.jpg" {
+		t.Errorf("image link = %q, want https://x.io/a.jpg", img.link)
+	}
+	// Caption is MediaRef.Caption + "\n" + plan body.
+	if !strings.Contains(img.caption, "cap") || !strings.Contains(img.caption, "below") {
+		t.Errorf("image caption should carry both caption and body: %q", img.caption)
+	}
+	if containsNote(lost, "image sent as text") {
+		t.Error("native image send must not report a text-degradation note")
 	}
 }
 
@@ -393,4 +410,96 @@ func containsNote(notes []Degradation, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestRenderURLActionLongLabelTruncated(t *testing.T) {
+	// A URL action label longer than 20 chars is truncated with a degradation note.
+	var lost []Degradation
+	r := NewRenderer(nil).OnDegradation(func(_ context.Context, _ botmsg.MessageFromBot, notes []Degradation) {
+		lost = append(lost, notes...)
+	})
+	longLabel := "This label is definitely over twenty characters long"
+	plan := botplan.MessagePlan{
+		Text:      botplan.RichText("body"),
+		URLAction: &botplan.URLAction{Label: longLabel, URL: "https://x.io"},
+	}
+	msgs, err := r.Render(plan, waTarget(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cta, ok := msgs[0].BotMessage.(sendCTAURLMessage)
+	if !ok {
+		t.Fatalf("want sendCTAURLMessage, got %T", msgs[0].BotMessage)
+	}
+	if len([]rune(cta.displayText)) > wabotapi.MaxCtaDisplayTextLength {
+		t.Errorf("display_text %q still exceeds the 20-char limit", cta.displayText)
+	}
+	if !containsNote(lost, "truncated") {
+		t.Errorf("truncation should be reported, got %v", lost)
+	}
+}
+
+func TestRenderMediaByID(t *testing.T) {
+	// When MediaRef carries a MediaID, the native image message uses ID over URL.
+	plan := botplan.MessagePlan{
+		Media: &botplan.MediaRef{MediaID: "media-abc", Caption: "pic"},
+	}
+	msgs, err := NewRenderer(nil).Render(plan, waTarget(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, ok := msgs[0].BotMessage.(sendImageMessage)
+	if !ok {
+		t.Fatalf("want sendImageMessage, got %T", msgs[0].BotMessage)
+	}
+	if img.mediaID != "media-abc" || img.link != "" {
+		t.Errorf("want mediaID=media-abc, got %+v", img)
+	}
+	if img.caption != "pic" {
+		t.Errorf("caption = %q, want pic", img.caption)
+	}
+}
+
+func TestRenderMediaBodyOnlyCaption(t *testing.T) {
+	// When MediaRef has no Caption but the plan has body text, body becomes caption.
+	plan := botplan.MessagePlan{
+		Text:  botplan.RichText("see image"),
+		Media: &botplan.MediaRef{ImageURL: "https://x.io/a.jpg"},
+	}
+	msgs, err := NewRenderer(nil).Render(plan, waTarget(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, ok := msgs[0].BotMessage.(sendImageMessage)
+	if !ok {
+		t.Fatalf("want sendImageMessage, got %T", msgs[0].BotMessage)
+	}
+	if img.caption != "see image" {
+		t.Errorf("caption = %q, want body text as caption", img.caption)
+	}
+}
+
+func TestRenderURLActionOnlyUsesBodyAsCtaBody(t *testing.T) {
+	// When there is only a URLAction (no prompt), plan text becomes the cta_url body.
+	plan := botplan.MessagePlan{
+		Text:      botplan.RichText("Visit our site"),
+		URLAction: &botplan.URLAction{Label: "Open", URL: "https://x.io"},
+	}
+	msgs, err := NewRenderer(nil).Render(plan, waTarget(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("want 1 message, got %d", len(msgs))
+	}
+	cta, ok := msgs[0].BotMessage.(sendCTAURLMessage)
+	if !ok {
+		t.Fatalf("want sendCTAURLMessage, got %T", msgs[0].BotMessage)
+	}
+	if cta.body != "Visit our site" {
+		t.Errorf("cta body = %q, want plan text", cta.body)
+	}
+	if cta.displayText != "Open" {
+		t.Errorf("display_text = %q, want Open", cta.displayText)
+	}
 }

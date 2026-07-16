@@ -336,6 +336,17 @@ func TestTemplateMessage_BotMessageType(t *testing.T) {
 	}
 }
 
+// TestSendNativeMessageTypes_BotMessageType pins that the native image and
+// cta_url wrappers also return TypeUndefined — dispatch is by concrete type.
+func TestSendNativeMessageTypes_BotMessageType(t *testing.T) {
+	if got := (sendImageMessage{}).BotMessageType(); got != botmsg.TypeUndefined {
+		t.Errorf("sendImageMessage.BotMessageType() = %v, want TypeUndefined", got)
+	}
+	if got := (sendCTAURLMessage{}).BotMessageType(); got != botmsg.TypeUndefined {
+		t.Errorf("sendCTAURLMessage.BotMessageType() = %v, want TypeUndefined", got)
+	}
+}
+
 // TestResponder_noRecipientAndDegradeFailure covers the two early returns.
 func TestResponder_noRecipientAndDegradeFailure(t *testing.T) {
 	ts := sendOK(t, nil)
