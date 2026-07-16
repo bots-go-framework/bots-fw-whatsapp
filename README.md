@@ -7,10 +7,11 @@
 WhatsApp Cloud API adapter for [bots-fw](https://github.com/bots-go-framework/bots-fw),
 built on [bots-api-whatsapp](https://github.com/bots-go-framework/bots-api-whatsapp).
 
-> **Status: early — not yet a working adapter.** The customer-service-window gate,
+> **Status: early — the send path works, the receive path does not.** The
+> customer-service-window gate, the responder (with progressive degradation),
 > webhook signature verification, and inbound payload types are implemented and
-> tested. The webhook handler, context, input types, responder, and chat-data store
-> are not. See [Roadmap](#roadmap).
+> tested. The webhook handler, context, input types, and chat-data store are not.
+> See [Roadmap](#roadmap).
 
 <!-- dev-approach:v1 -->
 ## Our approach to development
@@ -67,6 +68,53 @@ m := botmsg.MessageFromBot{
 }
 ```
 
+## Progressive degradation
+
+**The app writes one rich message aimed at Telegram. This adapter fits it to
+WhatsApp.** Messages are never rejected for being too rich, and Telegram is never
+dragged down to WhatsApp's level — the lossy step lives here, in the only layer
+that knows what WhatsApp cannot do.
+
+The ladder, richest rung first:
+
+| Buttons | Becomes | Callback routing |
+|---|---|---|
+| 0 | plain text | — |
+| 1–3 | native reply buttons | **preserved** — data rides in the button id |
+| 4–10 | a tap-to-open list | **preserved** — data rides in the row id |
+| 11+ | a numbered text menu | lost — user replies with a number |
+
+Other degradations, each reported rather than silent:
+
+- **`IsEdit` → a new message.** WhatsApp has no edit endpoint, so the conversation
+  is append-only and the original stays visible. This is the most user-visible
+  difference from Telegram.
+- **`FormatHTML` → plain text.** WhatsApp's markup is unverified, so no markup is
+  emitted. `<a href="url">text</a>` becomes `text (url)` — URLs auto-hyperlink, so
+  the destination stays reachable.
+- **Button grids → flat.** `botkb` models `[][]Button` (Telegram rows); WhatsApp
+  has no grid, so rows collapse. The actions survive, the layout doesn't.
+- **URL buttons → inlined into the body.** WhatsApp reply buttons are type `reply`
+  only and cannot carry links.
+- **`switch_inline_query` buttons → dropped.** Inline mode is Telegram-only.
+- **Over-long labels → truncated; duplicate labels → disambiguated.** Meta rejects
+  both outright, so the adapter fixes them rather than failing the send.
+
+Degradation is observable — wire up the callback and these become a running record
+of where the WhatsApp experience diverges:
+
+```go
+responder.OnDegradation(func(ctx context.Context, m botmsg.MessageFromBot, notes []whatsapp.Degradation) {
+	for _, n := range notes {
+		logus.Warningf(ctx, "whatsapp degradation: %s", n)
+	}
+})
+```
+
+The one thing that gets **better** than Telegram: a reply button id allows **256
+characters** against Telegram's 64-byte `callback_data` cap, so callback URLs port
+without truncation.
+
 ## Why `LastInboundProvider` exists
 
 The window needs one fact: **when did the user last reply?**
@@ -117,6 +165,9 @@ Implemented:
 
 - `botsfw.BotPlatform` for `botsfwconst.PlatformWhatsApp`
 - The 24h window + `botsfw.SendGate` implementation
+- **Progressive degradation** of rich messages (buttons → list → text; HTML → plain;
+  edit → new message), with every loss reported via `OnDegradation`
+- The responder, incl. interactive reply buttons and list messages
 - `TemplateMessage` (named and positional body parameters)
 - `ChatID` — a phone-number `botmsg.ChatUID` (`botmsg.ChatIntID` is an `int64` and
   cannot carry a `wa_id`)
@@ -127,9 +178,9 @@ Not yet implemented:
 
 - The `botsfw.WebhookHandler` tying the above together, and `WebhookContext`
 - `botinput` input types, and the `LastInboundProvider` store implementation
-- The responder that calls the API
-- Interactive `button_reply` / `list_reply` inbound payloads — each has a dedicated
-  Meta reference page not yet read, and guessing a wire shape is not worth it
+- Interactive `button_reply` / `list_reply` **inbound** payloads (outbound is done) —
+  the inbound shape has a dedicated Meta reference page not yet read, and guessing a
+  wire shape is not worth it
 - Media, location, contacts
 - **Deduplication.** Meta explicitly states *"your server should handle
   deduplication"* on retries over 36 hours. `bots-fw`'s `IsNewerThen` /
@@ -145,9 +196,9 @@ backstage repo.
 |---|---|
 | Reply buttons | **max 3**, flat, no grid. Labels ≤ 20 chars. Button id ≤ 256 chars — *more* than Telegram's 64-byte `callback_data` cap, so callback payloads port fine. The count does not. |
 | List messages | max 10 sections, but **10 rows across all sections combined** |
+| Groups | **max 8 participants**, invite-only, requires an Official Business Account. Templates work; **interactive messages do not**. Per-message pricing |
 | Callback ack | **none** — taps arrive as ordinary inbound messages. No `answerCallbackQuery` analogue |
 | Edit message | **no edit endpoint** — the Messages API enumerates 40+ operations and all are `Send` |
-| Groups | **unverified** — examples only ever show `recipient_type: individual`, but no doc states groups are unsupported |
 
 ## Related
 

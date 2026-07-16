@@ -3,7 +3,6 @@ package whatsapp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/bots-go-framework/bots-api-whatsapp/wabotapi"
@@ -11,45 +10,23 @@ import (
 	"github.com/bots-go-framework/bots-fw/botsfw"
 )
 
-// Unsupported-capability errors.
-//
-// Each of these is a bots-fw affordance with no WhatsApp counterpart. They fail
-// loudly rather than silently degrading: a message that renders as literal "<b>"
-// to a real user is worse than a send that refuses and says why.
 var (
-	// ErrEditNotSupported means the Cloud API has no edit endpoint.
-	//
-	// The Messages API reference enumerates 40+ operations and every one is a Send.
-	// bots-fw's MessageFromBot.IsEdit therefore cannot be honoured — and it is the
-	// dominant Telegram idiom ("tap a button, rewrite the message in place"), so
-	// this is a redesign signal, not a TODO.
-	ErrEditNotSupported = errors.New("whatsapp has no edit-message endpoint; send a new message instead")
-
 	// ErrDeleteNotSupported means the Cloud API has no delete endpoint.
 	//
 	// botsfw.WebhookResponder requires DeleteMessage of every platform, so this is
-	// a method that must exist and can only ever fail.
+	// a method that must exist and can only ever fail. Unlike the other gaps there
+	// is nothing to degrade to: a delete either happens or it does not.
 	ErrDeleteNotSupported = errors.New("whatsapp has no delete-message endpoint")
-
-	// ErrFormatNotSupported means a rich text format was requested.
-	//
-	// Deliberately an error rather than a passthrough: WhatsApp's markup support is
-	// UNVERIFIED (Meta's text-messages page documents a plain body with an optional
-	// link preview and no markup syntax). Passing HTML through would render literal
-	// tags to users. Resolve the formatting question before relaxing this.
-	ErrFormatNotSupported = errors.New("whatsapp text formatting is unverified; only botmsg.FormatText is supported")
-
-	// ErrKeyboardNotSupported means a botkb.Keyboard was attached.
-	//
-	// WhatsApp interactive messages exist (max 3 reply buttons, or a 10-row list),
-	// but their inbound and outbound wire shapes are not yet modelled — see the
-	// package roadmap. Guessing a wire format is what produced the Retry-After bug
-	// in bots-api-whatsapp.
-	ErrKeyboardNotSupported = errors.New("whatsapp keyboards are not implemented yet")
 
 	// ErrNoRecipient means the message carried no resolvable chat.
 	ErrNoRecipient = errors.New("cannot determine the recipient from MessageFromBot.ToChat")
 )
+
+// DegradationLogger is called with each loss incurred fitting a message to
+// WhatsApp, so degradation is observable rather than silent.
+//
+// Optional: a nil logger discards the notes.
+type DegradationLogger func(ctx context.Context, m botmsg.MessageFromBot, notes []Degradation)
 
 // sentMessage adapts a Cloud API send result to botsfw.MessengerResponse.
 type sentMessage struct {
@@ -69,9 +46,18 @@ func (s sentMessage) GetMessageID() string {
 // essential: bots-fw treats a responder that does not implement SendGate as always
 // permitting, so a WhatsApp responder without it would attempt out-of-window sends
 // and fail every one with 131047.
+//
+// Messages are progressively degraded to fit WhatsApp, never rejected for being too
+// rich. The app writes one message aimed at Telegram's full capability; fitting it
+// to a weaker platform is this adapter's job, not the app's. Rejecting rich
+// messages would push platform branches back into the app — or, worse, invite
+// someone to write to the lowest common denominator and quietly degrade Telegram.
+//
+// See degradeToSendable for the ladder.
 type Responder struct {
 	client *wabotapi.Client
 	gate   botsfw.SendGate
+	onLoss DegradationLogger
 }
 
 var (
@@ -94,6 +80,16 @@ func NewResponder(client *wabotapi.Client, lastInbound LastInboundProvider) *Res
 	}
 }
 
+// OnDegradation registers a callback invoked whenever a message loses something
+// on the way to WhatsApp. Returns the Responder for chaining.
+//
+// Worth wiring up: these notes are the running record of where the WhatsApp
+// experience diverges from Telegram's, and they are invisible otherwise.
+func (r *Responder) OnDegradation(log DegradationLogger) *Responder {
+	r.onLoss = log
+	return r
+}
+
 // CanSend implements botsfw.SendGate by delegating to the window gate.
 func (r *Responder) CanSend(ctx context.Context, m botmsg.MessageFromBot) error {
 	return r.gate.CanSend(ctx, m)
@@ -112,70 +108,55 @@ func (r *Responder) SendMessage(
 ) (botsfw.OnMessageSentResponse, error) {
 	var zero botsfw.OnMessageSentResponse
 
-	if err := r.rejectUnsupported(m); err != nil {
-		return zero, err
-	}
-
 	to := chatUID(m)
 	if to == "" {
 		return zero, ErrNoRecipient
 	}
 
-	resp, err := r.send(ctx, to, m)
+	sendable, notes, err := r.toSendable(to, m)
 	if err != nil {
 		return zero, err
 	}
+	if len(notes) > 0 && r.onLoss != nil {
+		r.onLoss(ctx, m, notes)
+	}
 
+	resp, err := r.client.SendMessage(ctx, sendable)
+	if err != nil {
+		return zero, err
+	}
 	return botsfw.OnMessageSentResponse{
 		StatusCode: http.StatusOK,
 		Message:    sentMessage{id: resp.MessageID()},
 	}, nil
 }
 
-// send dispatches on the concrete BotMessage type.
+// toSendable picks the WhatsApp representation for m.
 //
-// Dispatch is by type rather than by botmsg.Type because that enum is a list of
-// Telegram Bot API methods and has no template member.
-func (r *Responder) send(
-	ctx context.Context,
-	to string,
-	m botmsg.MessageFromBot,
-) (*wabotapi.SendMessageResponse, error) {
+// Dispatch is by concrete BotMessage type rather than by botmsg.Type, because that
+// enum is a list of Telegram Bot API methods and has no template member.
+func (r *Responder) toSendable(to string, m botmsg.MessageFromBot) (wabotapi.Sendable, []Degradation, error) {
 	switch bm := m.BotMessage.(type) {
 	case TemplateMessage:
-		return r.client.SendMessage(ctx, bm.toConfig(to))
+		return bm.toConfig(to), nil, nil
 	case *TemplateMessage:
-		return r.client.SendMessage(ctx, bm.toConfig(to))
+		return bm.toConfig(to), nil, nil
 	}
 
-	if m.Text == "" {
-		return nil, fmt.Errorf("nothing to send: %w", wabotapi.ErrEmptyBody)
+	sendable, notes, err := degradeToSendable(to, m)
+	if err != nil {
+		return nil, notes, err
 	}
-	cfg := wabotapi.NewSendText(to, m.Text)
-	if !m.DisableWebPagePreview {
-		cfg = cfg.WithPreviewURL()
-	}
-	return r.client.SendMessage(ctx, cfg)
-}
 
-// rejectUnsupported fails fast on bots-fw affordances WhatsApp cannot honour.
-//
-// Templates are exempt from the format and keyboard checks: their content is
-// defined by the approved template, not by these fields.
-func (r *Responder) rejectUnsupported(m botmsg.MessageFromBot) error {
+	// An edit is degraded, not refused: WhatsApp has no edit endpoint, so the
+	// update arrives as a new message and the conversation becomes append-only.
+	// This is the #1 Telegram idiom in Debtus ("tap a button, rewrite the message
+	// in place"), and it is the single most visible difference for users.
 	if m.IsEdit || m.EditMessageIntID != 0 || m.EditMessageUID != nil {
-		return ErrEditNotSupported
+		notes = append(notes, Degradation(
+			"edit sent as a new message: WhatsApp has no edit endpoint, so the original stays visible"))
 	}
-	if isTemplate(m) {
-		return nil
-	}
-	if m.Format != botmsg.FormatText {
-		return fmt.Errorf("format %v requested: %w", m.Format, ErrFormatNotSupported)
-	}
-	if m.Keyboard != nil {
-		return ErrKeyboardNotSupported
-	}
-	return nil
+	return sendable, notes, nil
 }
 
 // DeleteMessage implements botsfw.WebhookResponder.

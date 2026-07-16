@@ -3,7 +3,7 @@ module github.com/bots-go-framework/bots-fw-whatsapp
 go 1.24.3
 
 require (
-	github.com/bots-go-framework/bots-api-whatsapp v0.1.1
+	github.com/bots-go-framework/bots-api-whatsapp v0.2.0
 	github.com/bots-go-framework/bots-fw v0.72.0
 	github.com/bots-go-framework/bots-go-core v0.2.4
 )

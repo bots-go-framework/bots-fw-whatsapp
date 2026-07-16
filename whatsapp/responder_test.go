@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,93 +100,94 @@ func TestResponder_sendsTemplate(t *testing.T) {
 	}
 }
 
-// TestResponder_rejectsEdit pins the #3 Debtus collision at the type level.
+// TestResponder_editDegradesToNewMessage pins the #3 Debtus collision DEGRADING
+// rather than failing.
 //
-// 30 sites use the "tap a button, rewrite the message in place" idiom. WhatsApp has
-// no edit endpoint, so this must fail loudly here rather than silently send a
-// duplicate message and leave the original stale on the user's phone.
-func TestResponder_rejectsEdit(t *testing.T) {
+// 30 sites use "tap a button, rewrite the message in place". WhatsApp has no edit
+// endpoint, so the update arrives as a new message and the conversation becomes
+// append-only. Debtus keeps working unchanged; the loss is reported, not raised.
+func TestResponder_editDegradesToNewMessage(t *testing.T) {
+	var body []byte
+	ts := sendOK(t, &body)
+	defer ts.Close()
+
+	var got []Degradation
+	r := newTestResponder(ts).OnDegradation(func(_ context.Context, _ botmsg.MessageFromBot, n []Degradation) {
+		got = n
+	})
+
+	m := botmsg.MessageFromBot{ToChat: ChatID("16505551234")}
+	m.Text = "updated"
+	m.IsEdit = true
+
+	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); err != nil {
+		t.Fatalf("an edit must degrade to a new message, not error: %v", err)
+	}
+	if body == nil {
+		t.Fatal("the update must still reach the user as a new message")
+	}
+	if !hasNote(got, "no edit endpoint") {
+		t.Errorf("the loss must be reported, got %v", got)
+	}
+}
+
+// TestResponder_richFormatDegrades pins the #7 Debtus collision degrading: 88
+// FormatHTML sites keep working, minus the styling, and never emit literal tags.
+func TestResponder_richFormatDegrades(t *testing.T) {
 	var body []byte
 	ts := sendOK(t, &body)
 	defer ts.Close()
 	r := newTestResponder(ts)
 
-	for _, tt := range []struct {
-		name string
-		mut  func(*botmsg.MessageFromBot)
-	}{
-		{"IsEdit", func(m *botmsg.MessageFromBot) { m.IsEdit = true }},
-		{"EditMessageIntID", func(m *botmsg.MessageFromBot) { m.EditMessageIntID = 42 }},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			body = nil
-			m := botmsg.MessageFromBot{ToChat: ChatID("16505551234")}
-			m.Text = "updated"
-			tt.mut(&m)
+	m := botmsg.MessageFromBot{ToChat: ChatID("16505551234")}
+	m.Text = "<b>Overdue</b>"
+	m.Format = botmsg.FormatHTML
 
-			_, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS)
-			if !errors.Is(err, ErrEditNotSupported) {
-				t.Errorf("got %v, want ErrEditNotSupported", err)
-			}
-			if body != nil {
-				t.Error("a rejected edit must not reach the API as a new message")
-			}
-		})
+	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); err != nil {
+		t.Fatalf("HTML must degrade, not error: %v", err)
+	}
+	if strings.Contains(string(body), `<b>`) || strings.Contains(string(body), "<b>") {
+		t.Errorf("literal tags must never reach a user: %s", body)
+	}
+	if !strings.Contains(string(body), "Overdue") {
+		t.Errorf("the text must survive: %s", body)
 	}
 }
 
-// TestResponder_rejectsRichFormat pins the #7 Debtus collision.
-//
-// 88 sites use FormatHTML. WhatsApp's markup support is UNVERIFIED, so passing HTML
-// through would render literal "<b>" to real users. Failing loudly is the honest
-// behaviour until the formatting question is answered.
-func TestResponder_rejectsRichFormat(t *testing.T) {
-	ts := sendOK(t, nil)
-	defer ts.Close()
-	r := newTestResponder(ts)
-
-	for _, f := range []botmsg.Format{botmsg.FormatHTML, botmsg.FormatMarkdown} {
-		m := botmsg.MessageFromBot{ToChat: ChatID("16505551234")}
-		m.Text = "<b>bold</b>"
-		m.Format = f
-
-		_, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS)
-		if !errors.Is(err, ErrFormatNotSupported) {
-			t.Errorf("format %v: got %v, want ErrFormatNotSupported", f, err)
-		}
-	}
-}
-
-// TestResponder_rejectsKeyboard pins the #2 Debtus collision: 158 button
-// constructions, and the interactive wire shape is not yet modelled.
-//
-// Note the shape of botkb itself: NewMessageKeyboard takes [][]Button — rows, i.e.
-// a Telegram grid — and every KeyboardType constant is annotated "Used by:
-// Telegram". WhatsApp allows a FLAT MAXIMUM OF 3 reply buttons, so botkb's model
-// does not merely need mapping, it does not fit. This adapter is botkb's first
-// real consumer and it cannot use it as-is.
-func TestResponder_rejectsKeyboard(t *testing.T) {
-	ts := sendOK(t, nil)
+// TestResponder_keyboardDegradesToButtons pins the #2 Debtus collision degrading:
+// a rich keyboard becomes native reply buttons, callback routing intact.
+func TestResponder_keyboardDegradesToButtons(t *testing.T) {
+	var body []byte
+	ts := sendOK(t, &body)
 	defer ts.Close()
 	r := newTestResponder(ts)
 
 	m := botmsg.MessageFromBot{ToChat: ChatID("16505551234")}
-	m.Text = "pick one"
+	m.Text = "You owe $40"
 	m.Keyboard = botkb.NewMessageKeyboard(botkb.KeyboardTypeInline,
 		[]botkb.Button{botkb.NewDataButton("Pay now", "pay?id=1")},
 	)
 
-	_, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS)
-	if !errors.Is(err, ErrKeyboardNotSupported) {
-		t.Errorf("got %v, want ErrKeyboardNotSupported", err)
+	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); err != nil {
+		t.Fatalf("a keyboard must degrade, not error: %v", err)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(body, &sent); err != nil {
+		t.Fatalf("bad body: %v", err)
+	}
+	if sent["type"] != "interactive" {
+		t.Errorf("type = %v, want interactive reply buttons", sent["type"])
+	}
+	if !strings.Contains(string(body), "pay?id=1") {
+		t.Errorf("callback data must survive: %s", body)
 	}
 }
 
-// TestResponder_templateExemptFromFormatAndKeyboardChecks pins that a template's
-// content is defined by the approved template, not by these fields — so they must
-// not block the one message type that works outside the window.
-func TestResponder_templateExemptFromFormatAndKeyboardChecks(t *testing.T) {
-	ts := sendOK(t, nil)
+// TestResponder_templateIgnoresDegradation pins that a template's content comes
+// from the approved template, so free-form degradation does not touch it.
+func TestResponder_templateIgnoresDegradation(t *testing.T) {
+	var body []byte
+	ts := sendOK(t, &body)
 	defer ts.Close()
 	r := newTestResponder(ts)
 
@@ -193,28 +195,17 @@ func TestResponder_templateExemptFromFormatAndKeyboardChecks(t *testing.T) {
 		ToChat:     ChatID("16505551234"),
 		BotMessage: TemplateMessage{Name: "payment_reminder", LanguageCode: "en_US"},
 	}
-	m.Format = botmsg.FormatHTML // would be rejected on a free-form message
+	m.Format = botmsg.FormatHTML
 
 	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); err != nil {
-		t.Errorf("a template must not be blocked by free-form checks, got: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-}
-
-// TestResponder_editRejectedEvenForTemplate pins that edit is refused first:
-// there is no edit endpoint for ANY message type.
-func TestResponder_editRejectedEvenForTemplate(t *testing.T) {
-	ts := sendOK(t, nil)
-	defer ts.Close()
-	r := newTestResponder(ts)
-
-	m := botmsg.MessageFromBot{
-		ToChat:     ChatID("16505551234"),
-		BotMessage: TemplateMessage{Name: "x", LanguageCode: "en_US"},
+	var sent map[string]any
+	if err := json.Unmarshal(body, &sent); err != nil {
+		t.Fatalf("bad body: %v", err)
 	}
-	m.IsEdit = true
-
-	if _, err := r.SendMessage(context.Background(), m, botsfw.BotAPISendMessageOverHTTPS); !errors.Is(err, ErrEditNotSupported) {
-		t.Errorf("got %v, want ErrEditNotSupported", err)
+	if sent["type"] != "template" {
+		t.Errorf("type = %v, want template", sent["type"])
 	}
 }
 

@@ -2,8 +2,8 @@ github.com/RoaringBitmap/roaring/v2 v2.21.0 h1:RKVgkD+c9ouyCydF2PW/mztDyZTsb7ksa
 github.com/RoaringBitmap/roaring/v2 v2.21.0/go.mod h1:SfT3of9nYh3vis1dIbCj4Yw6KQGujTN+f345nrN/0JA=
 github.com/bits-and-blooms/bitset v1.24.4 h1:95H15Og1clikBrKr/DuzMXkQzECs1M6hhoGXLwLQOZE=
 github.com/bits-and-blooms/bitset v1.24.4/go.mod h1:7hO7Gc7Pp1vODcmWvKMRA9BNmbv6a/7QIWpPxHddWR8=
-github.com/bots-go-framework/bots-api-whatsapp v0.1.1 h1:w8sk25TuJWC8oB9HI/9OlQjuRSvLz1T4cjvRJaWkBBo=
-github.com/bots-go-framework/bots-api-whatsapp v0.1.1/go.mod h1:S+AGpx4Ak0ZcirHAGV015lCN3vB6p3vr2yRw4c9w8Zo=
+github.com/bots-go-framework/bots-api-whatsapp v0.2.0 h1:y/1eeFsECL9owQ1fvn91oXZOJtngCI/4FFFobBULU/s=
+github.com/bots-go-framework/bots-api-whatsapp v0.2.0/go.mod h1:S+AGpx4Ak0ZcirHAGV015lCN3vB6p3vr2yRw4c9w8Zo=
 github.com/bots-go-framework/bots-fw v0.72.0 h1:B2j/Ms5XZV/EOdFJLHJjZXB9mmWvokmQhxjSsKnNAFg=
 github.com/bots-go-framework/bots-fw v0.72.0/go.mod h1:vJmkH6/ZdQ6fKVdCppeirPtSji1gaKBZcFLpLgVOqMM=
 github.com/bots-go-framework/bots-fw-store v0.10.5 h1:AzEZE7N1nc2ysAxjqRsvLT1TD+spS9EDjne0QWXMRIM=
