@@ -1,0 +1,283 @@
+package whatsapp
+
+import (
+	"context"
+	"strings"
+	"sync"
+
+	"github.com/dal-go/dalgo/dal"
+)
+
+// TemplateStatus is the lifecycle status of a WhatsApp template.
+type TemplateStatus string
+
+const (
+	TemplateStatusApproved TemplateStatus = "approved"
+	TemplateStatusPending  TemplateStatus = "pending"
+	TemplateStatusRejected TemplateStatus = "rejected"
+	TemplateStatusPaused   TemplateStatus = "paused"
+	TemplateStatusDisabled TemplateStatus = "disabled"
+)
+
+// URLButtonSpec defines the URL button shape of a template.
+type URLButtonSpec struct {
+	Label   string
+	BaseURL string
+}
+
+// TemplateDef describes an approved WhatsApp template.
+type TemplateDef struct {
+	Name         string
+	Locale       string // e.g. "en_US" or "en" or "ru"
+	Version      string
+	Status       TemplateStatus
+	BodyParams   []string       // placeholder names, e.g. ["name", "date"]
+	QuickReplies []string       // quick-reply button labels, in order
+	URLButton    *URLButtonSpec // nil if no URL button
+}
+
+// SyncSource is a hook for future Business-Management-API synchronisation.
+// An implementation should return the full current template list; the catalog
+// calls it during a sync pass. The API client (bots-api-whatsapp) is built
+// in a parallel task; this interface decouples the catalog from it.
+type SyncSource interface {
+	ListTemplates(ctx context.Context) ([]TemplateDef, error)
+}
+
+// TemplateCatalog is the registry of approved WhatsApp templates.
+type TemplateCatalog interface {
+	// Get returns the best available approved template for a purpose key with
+	// locale fallback: exact locale → language-only (first part of locale tag)
+	// → default locale (first registered for purpose). Returns found=false if
+	// no approved template exists for purpose.
+	Get(ctx context.Context, purpose, locale string) (TemplateDef, bool, error)
+
+	// Upsert adds or replaces a template definition.
+	Upsert(ctx context.Context, purpose string, def TemplateDef) error
+
+	// SetStatus updates the status of a named template. Returns false if no
+	// template with that name is registered.
+	SetStatus(ctx context.Context, name string, status TemplateStatus) (found bool, err error)
+}
+
+// langCode returns the language portion of a locale tag (e.g. "en" from "en_US").
+func langCode(locale string) string {
+	if idx := strings.IndexByte(locale, '_'); idx >= 0 {
+		return locale[:idx]
+	}
+	return locale
+}
+
+// pickApproved applies locale fallback and returns the best approved TemplateDef
+// from defs. Order: exact locale → language prefix → first approved.
+func pickApproved(defs []TemplateDef, locale string) (TemplateDef, bool) {
+	lang := langCode(locale)
+	var langMatch *TemplateDef
+	var firstApproved *TemplateDef
+	for i := range defs {
+		d := &defs[i]
+		if d.Status != TemplateStatusApproved {
+			continue
+		}
+		if firstApproved == nil {
+			firstApproved = d
+		}
+		if d.Locale == locale {
+			return *d, true
+		}
+		if langMatch == nil && langCode(d.Locale) == lang {
+			langMatch = d
+		}
+	}
+	if langMatch != nil {
+		return *langMatch, true
+	}
+	if firstApproved != nil {
+		return *firstApproved, true
+	}
+	return TemplateDef{}, false
+}
+
+// ---- In-memory implementation ----
+
+type memoryTemplateCatalog struct {
+	mu sync.RWMutex
+	// byPurpose maps purpose → list of TemplateDefs (all locales/versions)
+	byPurpose map[string][]TemplateDef
+	// byName maps template name → purpose (for SetStatus)
+	byName map[string]string
+}
+
+// NewMemoryTemplateCatalog returns a thread-safe in-memory TemplateCatalog.
+func NewMemoryTemplateCatalog() TemplateCatalog {
+	return &memoryTemplateCatalog{
+		byPurpose: make(map[string][]TemplateDef),
+		byName:    make(map[string]string),
+	}
+}
+
+// Get implements TemplateCatalog.
+func (c *memoryTemplateCatalog) Get(_ context.Context, purpose, locale string) (TemplateDef, bool, error) {
+	c.mu.RLock()
+	defs := c.byPurpose[purpose]
+	c.mu.RUnlock()
+	def, found := pickApproved(defs, locale)
+	return def, found, nil
+}
+
+// Upsert implements TemplateCatalog.
+func (c *memoryTemplateCatalog) Upsert(_ context.Context, purpose string, def TemplateDef) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	defs := c.byPurpose[purpose]
+	replaced := false
+	for i, d := range defs {
+		if d.Name == def.Name && d.Locale == def.Locale {
+			defs[i] = def
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		defs = append(defs, def)
+	}
+	c.byPurpose[purpose] = defs
+	c.byName[def.Name] = purpose
+	return nil
+}
+
+// SetStatus implements TemplateCatalog.
+func (c *memoryTemplateCatalog) SetStatus(_ context.Context, name string, status TemplateStatus) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	purpose, ok := c.byName[name]
+	if !ok {
+		return false, nil
+	}
+	defs := c.byPurpose[purpose]
+	for i := range defs {
+		if defs[i].Name == name {
+			defs[i].Status = status
+			c.byPurpose[purpose] = defs
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ---- dalgo implementation ----
+
+const (
+	waTemplatesCollection     = "waTemplates"
+	waTemplateNamesCollection = "waTemplateNames"
+)
+
+// waTemplateList is the dalgo record data for a purpose's template list.
+type waTemplateList struct {
+	Defs []TemplateDef `firestore:"defs" json:"defs"`
+}
+
+// waTemplateNameRecord maps a template name back to its purpose.
+type waTemplateNameRecord struct {
+	Purpose string `firestore:"purpose" json:"purpose"`
+}
+
+type dalgoTemplateCatalog struct {
+	db dal.DB
+}
+
+// NewDalgoTemplateCatalog returns a TemplateCatalog backed by db.
+// Uses two collections:
+//   - "waTemplates"     keyed by purpose → waTemplateList
+//   - "waTemplateNames" keyed by name    → waTemplateNameRecord
+func NewDalgoTemplateCatalog(db dal.DB) TemplateCatalog {
+	return &dalgoTemplateCatalog{db: db}
+}
+
+// Get implements TemplateCatalog.
+func (c *dalgoTemplateCatalog) Get(ctx context.Context, purpose, locale string) (TemplateDef, bool, error) {
+	key := dal.NewKeyWithID(waTemplatesCollection, purpose)
+	list := &waTemplateList{}
+	record := dal.NewRecordWithData(key, list)
+	if err := c.db.Get(ctx, record); err != nil {
+		if dal.IsNotFound(err) {
+			return TemplateDef{}, false, nil
+		}
+		return TemplateDef{}, false, err
+	}
+	def, found := pickApproved(list.Defs, locale)
+	return def, found, nil
+}
+
+// Upsert implements TemplateCatalog.
+func (c *dalgoTemplateCatalog) Upsert(ctx context.Context, purpose string, def TemplateDef) error {
+	return c.db.RunReadwriteTransaction(ctx, func(ctx context.Context, tx dal.ReadwriteTransaction) error {
+		// Read existing list.
+		listKey := dal.NewKeyWithID(waTemplatesCollection, purpose)
+		list := &waTemplateList{}
+		listRecord := dal.NewRecordWithData(listKey, list)
+		if err := tx.Get(ctx, listRecord); err != nil && !dal.IsNotFound(err) {
+			return err
+		}
+		// Replace or append.
+		replaced := false
+		for i, d := range list.Defs {
+			if d.Name == def.Name && d.Locale == def.Locale {
+				list.Defs[i] = def
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			list.Defs = append(list.Defs, def)
+		}
+		if err := tx.Set(ctx, dal.NewRecordWithData(listKey, list)); err != nil {
+			return err
+		}
+
+		// Write name→purpose index.
+		nameKey := dal.NewKeyWithID(waTemplateNamesCollection, def.Name)
+		nameRecord := dal.NewRecordWithData(nameKey, &waTemplateNameRecord{Purpose: purpose})
+		return tx.Set(ctx, nameRecord)
+	})
+}
+
+// SetStatus implements TemplateCatalog.
+func (c *dalgoTemplateCatalog) SetStatus(ctx context.Context, name string, status TemplateStatus) (bool, error) {
+	// Look up which purpose this name belongs to.
+	nameKey := dal.NewKeyWithID(waTemplateNamesCollection, name)
+	nameData := &waTemplateNameRecord{}
+	nameRecord := dal.NewRecordWithData(nameKey, nameData)
+	if err := c.db.Get(ctx, nameRecord); err != nil {
+		if dal.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	purpose := nameData.Purpose
+
+	var found bool
+	err := c.db.RunReadwriteTransaction(ctx, func(ctx context.Context, tx dal.ReadwriteTransaction) error {
+		listKey := dal.NewKeyWithID(waTemplatesCollection, purpose)
+		list := &waTemplateList{}
+		listRecord := dal.NewRecordWithData(listKey, list)
+		if err := tx.Get(ctx, listRecord); err != nil {
+			if dal.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		for i := range list.Defs {
+			if list.Defs[i].Name == name {
+				list.Defs[i].Status = status
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+		return tx.Set(ctx, dal.NewRecordWithData(listKey, list))
+	})
+	return found, err
+}
