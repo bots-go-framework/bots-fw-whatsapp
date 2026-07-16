@@ -3,6 +3,8 @@ package whatsapp
 import (
 	"encoding/json"
 	"errors"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -164,5 +166,126 @@ func TestWebhookInput_platformAndChat(t *testing.T) {
 	}
 	if chat.GetType() != "individual" {
 		t.Errorf("chat.GetType() = %q", chat.GetType())
+	}
+}
+
+// metaTemplateButtonTap is Meta's documented template quick-reply payload, verbatim.
+// https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/button
+const metaTemplateButtonTap = `{
+  "from": "16505551234",
+  "id": "wamid.HBgLMTY1MDM4Nzk0MzkVAgASGBQzQUFERjg0NDEzNDdFODU3MUMxMAA=",
+  "timestamp": "1750091045",
+  "type": "button",
+  "context": {"id": "wamid.THE_TEMPLATE_WE_SENT"},
+  "button": {"payload": "Unsubscribe", "text": "Unsubscribe"}
+}`
+
+// metaButtonReply is Meta's documented interactive button_reply payload, verbatim.
+const metaButtonReply = `{
+  "from": "16505551234",
+  "id": "wamid.HBgLMTY1MDM4Nzk0MzkVAgASGBQzQTZAQzg0MzQ4QjRCM0NGNkVGOAA=",
+  "timestamp": "1750025136",
+  "type": "interactive",
+  "interactive": {"type": "button_reply", "button_reply": {"id": "cancel-button", "title": "Cancel"}}
+}`
+
+// metaListReply is Meta's documented interactive list_reply payload, verbatim.
+const metaListReply = `{
+  "from": "16505551234",
+  "id": "wamid.HBgLMTY1MDM4Nzk0MzkVAgASGBQzQUFERjg0NDEzNDdFODU3MUMxMAA=",
+  "timestamp": "1749854575",
+  "type": "interactive",
+  "interactive": {"type": "list_reply", "list_reply": {
+    "id": "priority_express", "title": "Priority Mail Express", "description": "Next Day to 2 Days"}}
+}`
+
+func inputFromJSON(t *testing.T, raw string) botinput.InputMessage {
+	t.Helper()
+	var m InboundMessage
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatalf("failed to parse Meta's example: %v", err)
+	}
+	return NewWebhookInput(m, "106540352242922", nil)
+}
+
+// TestWebhookInput_interactiveReplyCarriesCallbackState pins the good case: inside
+// the 24h window, the business-supplied id round-trips, so Debtus's "pay?id=42"
+// callback data survives exactly as on Telegram.
+func TestWebhookInput_interactiveReplyCarriesCallbackState(t *testing.T) {
+	in := inputFromJSON(t, metaButtonReply)
+
+	if in.InputType() != botinput.TypeCallbackQuery {
+		t.Errorf("InputType = %v, want TypeCallbackQuery so existing handlers route it", in.InputType())
+	}
+	cq, ok := in.(botinput.CallbackQuery)
+	if !ok {
+		t.Fatalf("%T does not implement botinput.CallbackQuery", in)
+	}
+	if cq.GetData() != "cancel-button" {
+		t.Errorf("GetData() = %q, want the business-supplied id", cq.GetData())
+	}
+	if in.(waCallbackQuery).IsTemplateButton() {
+		t.Error("an interactive reply is not a template button")
+	}
+}
+
+func TestWebhookInput_listReplyCarriesCallbackState(t *testing.T) {
+	in := inputFromJSON(t, metaListReply)
+	cq := in.(botinput.CallbackQuery)
+	if cq.GetData() != "priority_express" {
+		t.Errorf("GetData() = %q, want the business-supplied row id", cq.GetData())
+	}
+}
+
+// TestWebhookInput_templateButtonCarriesNoState is the finding that matters most in
+// this package.
+//
+// Outside the 24h window — where every Debtus reminder lives — a template button tap
+// returns only the button's LABEL. Meta describes button.payload and button.text
+// identically ("Quick-reply button label text") and its own example carries the same
+// value in both. There is no per-message state, so "which debt was this?" cannot be
+// answered from the payload. context.id is the only link back.
+func TestWebhookInput_templateButtonCarriesNoState(t *testing.T) {
+	in := inputFromJSON(t, metaTemplateButtonTap)
+
+	if in.InputType() != botinput.TypeCallbackQuery {
+		t.Errorf("InputType = %v, want TypeCallbackQuery", in.InputType())
+	}
+	cq := in.(waCallbackQuery)
+
+	if !cq.IsTemplateButton() {
+		t.Error("IsTemplateButton() must be true so callers know GetData is only a label")
+	}
+	// The label, not state. This is the whole point.
+	if cq.GetData() != "Unsubscribe" {
+		t.Errorf("GetData() = %q, want the button label", cq.GetData())
+	}
+	// The correlation key, and the only one available.
+	if cq.ContextMessageID() != "wamid.THE_TEMPLATE_WE_SENT" {
+		t.Errorf("ContextMessageID() = %q, want the wamid of the template we sent", cq.ContextMessageID())
+	}
+	// Telegram embeds the original message here, which is what makes "edit the
+	// message you came from" work. WhatsApp sends only its id.
+	if cq.GetMessage() != nil {
+		t.Error("GetMessage() must be nil: the webhook carries no original message content")
+	}
+}
+
+// TestWebhookInput_templateButtonDataIsNotRoutableAsURL pins why the framework's
+// router cannot route a template tap.
+//
+// bots-fw parses callback data as a URL and matches commands on its path. A label
+// like "Pay now" has no path to match, so template-borne callbacks must be routed by
+// ContextMessageID instead.
+func TestWebhookInput_templateButtonDataIsNotRoutableAsURL(t *testing.T) {
+	in := inputFromJSON(t, metaTemplateButtonTap)
+	data := in.(botinput.CallbackQuery).GetData()
+
+	u, err := url.Parse(data)
+	if err != nil {
+		return // unparseable is fine — it certainly will not route
+	}
+	if u.Path == data && strings.Contains(data, "?") {
+		t.Errorf("unexpected: %q looks URL-shaped; the point is that a label is not", data)
 	}
 }

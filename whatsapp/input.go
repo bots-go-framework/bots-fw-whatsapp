@@ -215,8 +215,17 @@ func NewWebhookInput(msg InboundMessage, phoneNumberID string, contacts []Webhoo
 		phoneNumberID: phoneNumberID,
 		sender:        waActor{waID: msg.From, name: profileName(msg.From, contacts)},
 	}
-	if msg.Type == string(wabotapi.MessageTypeText) && msg.Text != nil {
+	switch {
+	case msg.Type == string(wabotapi.MessageTypeText) && msg.Text != nil:
 		return waTextMessage{waInputMessage: base}
+
+	// A template quick-reply tap. The payload is the button's LABEL, not state.
+	case msg.Type == "button" && msg.Button != nil:
+		return waCallbackQuery{waInputMessage: base, data: msg.Button.Payload}
+
+	// A reply to a free-form interactive message. The id IS business-supplied.
+	case msg.Type == string(wabotapi.MessageTypeInteractive) && msg.Interactive.Reply() != nil:
+		return waCallbackQuery{waInputMessage: base, data: msg.Interactive.Reply().ID}
 	}
 	return waUnsupportedMessage{waInputMessage: base}
 }
@@ -230,3 +239,63 @@ func profileName(waID string, contacts []WebhookContact) string {
 	}
 	return ""
 }
+
+// waCallbackQuery adapts a WhatsApp button tap to botinput.CallbackQuery.
+//
+// WhatsApp has no callback-query update type — Meta states taps arrive with "the
+// same common structure" as any message. But bots-fw routes button presses through
+// CallbackQuery, and an app's existing handlers are written against it, so mapping
+// here is what lets those handlers work unchanged rather than forcing every app to
+// learn WhatsApp's shape.
+//
+// GetData is where the two inbound kinds diverge, and the difference is the single
+// most important thing in this package:
+//
+//   - interactive reply (inside the 24h window): the id is business-supplied, so
+//     "pay?id=42" round-trips exactly. Telegram parity.
+//   - template button tap (outside the window): the payload is only the button's
+//     LABEL. There is no per-message state. Use ContextMessageID to correlate.
+type waCallbackQuery struct {
+	waInputMessage
+	data string
+}
+
+var (
+	_ botinput.CallbackQuery = (*waCallbackQuery)(nil)
+	_ botinput.InputMessage  = (*waCallbackQuery)(nil)
+)
+
+// InputType implements botinput.InputMessage.
+func (m waCallbackQuery) InputType() botinput.Type { return botinput.TypeCallbackQuery }
+
+// GetID implements botinput.CallbackQuery — the wamid of the tap itself.
+func (m waCallbackQuery) GetID() string { return m.msg.ID }
+
+// GetFrom implements botinput.CallbackQuery.
+func (m waCallbackQuery) GetFrom() botinput.Sender { return m.sender }
+
+// GetMessage implements botinput.CallbackQuery.
+//
+// Always nil: the webhook carries only the wamid of the tapped message
+// (context.id), never its content. Telegram embeds the whole original message here,
+// which is what makes "edit the message you came from" possible — and is another
+// reason that idiom does not port. Use ContextMessageID and look it up.
+func (m waCallbackQuery) GetMessage() botinput.Message { return nil }
+
+// GetData implements botinput.CallbackQuery.
+//
+// ⚠️ For a TEMPLATE button tap this is the button's label text, NOT developer state.
+// bots-fw's router parses callback data as a URL and matches on its path
+// (router.go:251-263), which will not match a label like "Pay now". Template-borne
+// callbacks must be routed by ContextMessageID, not by this value.
+func (m waCallbackQuery) GetData() string { return m.data }
+
+// IsTemplateButton reports whether this tap came from a template button, in which
+// case GetData is a label and carries no state.
+func (m waCallbackQuery) IsTemplateButton() bool { return m.msg.Type == "button" }
+
+// ContextMessageID returns the wamid of the message the tapped button belonged to.
+//
+// For template taps this is the ONLY link back to what the tap was about, so the
+// mapping wamid -> subject must be stored when the template is sent.
+func (m waCallbackQuery) ContextMessageID() string { return m.msg.ContextMessageID() }

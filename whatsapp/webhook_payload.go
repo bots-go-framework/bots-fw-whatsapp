@@ -101,13 +101,94 @@ type InboundMessage struct {
 	// Text is present when Type == "text".
 	Text *InboundText `json:"text,omitempty"`
 
-	// Context is present when the message replies to another.
+	// Button is present when Type == "button": a TEMPLATE quick-reply tap.
+	Button *InboundButton `json:"button,omitempty"`
+
+	// Interactive is present when Type == "interactive": a reply to a free-form
+	// interactive message (reply buttons or a list).
+	Interactive *InboundInteractive `json:"interactive,omitempty"`
+
+	// Context is present when the message replies to another — including every
+	// button tap, where it identifies the message the button was attached to.
 	Context *InboundContext `json:"context,omitempty"`
 }
 
 // InboundText is the body of an inbound text message.
 type InboundText struct {
 	Body string `json:"body"`
+}
+
+// InboundButton is a TEMPLATE quick-reply button tap.
+//
+// ⚠️ Payload is NOT developer-defined state. Meta's webhook reference describes both
+// fields identically — "Quick-reply button label text" — and its example carries
+// "payload": "Unsubscribe", "text": "Unsubscribe". A template button therefore tells
+// you WHICH button was tapped, not WHICH entity it was about.
+//
+// Correlate via Context.ID instead: it is the wamid of the template message you
+// sent, so the mapping wamid -> subject must be stored at send time. See
+// InboundMessage.ContextMessageID.
+//
+// This differs from InboundInteractive, whose id IS developer-defined. The split
+// matters: free-form interactive replies (inside the 24h window) carry your state;
+// template taps (outside it) do not.
+//
+// https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/button
+type InboundButton struct {
+	// Payload is the quick-reply button's label text.
+	Payload string `json:"payload"`
+
+	// Text is the quick-reply button's label text — the same value as Payload.
+	Text string `json:"text"`
+}
+
+// InboundInteractive is a reply to a free-form interactive message.
+//
+// Unlike InboundButton, the id here IS the value the business supplied when sending
+// (wabotapi.NewReplyButton(id, title) / ListRow.ID), so callback state round-trips.
+//
+// https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/interactive
+type InboundInteractive struct {
+	// Type is "button_reply" or "list_reply".
+	Type string `json:"type"`
+
+	ButtonReply *InboundReply `json:"button_reply,omitempty"`
+
+	ListReply *InboundReply `json:"list_reply,omitempty"`
+}
+
+// InboundReply is the selected option of an interactive reply.
+type InboundReply struct {
+	// ID is the business-supplied id — the callback payload, up to 256 chars for a
+	// reply button (more than Telegram's 64-byte callback_data cap).
+	ID string `json:"id"`
+
+	Title string `json:"title"`
+
+	// Description is present on list replies only.
+	Description string `json:"description,omitempty"`
+}
+
+// Reply returns the selected option regardless of interactive type, or nil.
+func (i *InboundInteractive) Reply() *InboundReply {
+	if i == nil {
+		return nil
+	}
+	if i.ButtonReply != nil {
+		return i.ButtonReply
+	}
+	return i.ListReply
+}
+
+// ContextMessageID returns the wamid of the message this one replies to, or "".
+//
+// For a button tap this is the message the button was attached to — the only link
+// back to what the tap was about, since a template's payload carries no state.
+func (m InboundMessage) ContextMessageID() string {
+	if m.Context == nil {
+		return ""
+	}
+	return m.Context.ID
 }
 
 // InboundContext links an inbound message to the one it replies to.
