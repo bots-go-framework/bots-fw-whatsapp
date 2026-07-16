@@ -4,8 +4,8 @@ go 1.24.3
 
 require (
 	github.com/bots-go-framework/bots-api-whatsapp v0.2.0
-	github.com/bots-go-framework/bots-fw v0.72.1
-	github.com/bots-go-framework/bots-fw-store v0.10.5
+	github.com/bots-go-framework/bots-fw v0.72.2-0.20260716104613-9c3a6ede68e9
+	github.com/bots-go-framework/bots-fw-store v0.11.0
 	github.com/bots-go-framework/bots-go-core v0.2.4
 	github.com/dal-go/dalgo v0.62.13
 	github.com/strongo/logus v0.4.1
