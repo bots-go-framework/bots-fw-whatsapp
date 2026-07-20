@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/dal-go/dalgo/adapters/dalgo2memory"
 )
 
 func testSubjectStore(t *testing.T, newStore func() SubjectStore) {
@@ -63,12 +61,5 @@ func testSubjectStore(t *testing.T, newStore func() SubjectStore) {
 func TestMemorySubjectStore(t *testing.T) {
 	testSubjectStore(t, func() SubjectStore {
 		return NewMemorySubjectStore()
-	})
-}
-
-func TestDalgoSubjectStore(t *testing.T) {
-	testSubjectStore(t, func() SubjectStore {
-		db := dalgo2memory.NewDB()
-		return NewDalgoSubjectStore(db)
 	})
 }

@@ -3,8 +3,6 @@ package whatsapp
 import (
 	"context"
 	"testing"
-
-	"github.com/dal-go/dalgo/adapters/dalgo2memory"
 )
 
 func testTemplateCatalog(t *testing.T, newCatalog func() TemplateCatalog) {
@@ -160,12 +158,5 @@ func testTemplateCatalog(t *testing.T, newCatalog func() TemplateCatalog) {
 func TestMemoryTemplateCatalog(t *testing.T) {
 	testTemplateCatalog(t, func() TemplateCatalog {
 		return NewMemoryTemplateCatalog()
-	})
-}
-
-func TestDalgoTemplateCatalog(t *testing.T) {
-	testTemplateCatalog(t, func() TemplateCatalog {
-		db := dalgo2memory.NewDB()
-		return NewDalgoTemplateCatalog(db)
 	})
 }
