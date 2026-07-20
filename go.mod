@@ -4,20 +4,15 @@ go 1.25
 
 require (
 	github.com/bots-go-framework/bots-api-whatsapp v0.3.0
-	github.com/bots-go-framework/bots-fw v0.72.2-0.20260716104613-9c3a6ede68e9
-	github.com/bots-go-framework/bots-fw-store v0.11.0
-	github.com/bots-go-framework/bots-go-core v0.2.4
-	github.com/dal-go/dalgo v0.62.13
+	github.com/bots-go-framework/bots-fw v0.76.0
+	github.com/bots-go-framework/bots-fw-store v0.12.0
+	github.com/bots-go-framework/bots-go-core v0.2.5
 	github.com/strongo/logus v0.4.1
 )
 
 require (
-	github.com/RoaringBitmap/roaring/v2 v2.21.0 // indirect
-	github.com/bits-and-blooms/bitset v1.24.4 // indirect
-	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/strongo/analytics v0.2.5 // indirect
-	github.com/strongo/i18n v0.8.14 // indirect
-	github.com/strongo/random v0.0.1 // indirect
+	github.com/strongo/i18n v0.8.15 // indirect
 	github.com/strongo/slice v0.3.5 // indirect
-	github.com/strongo/validation v0.0.9 // indirect
+	github.com/strongo/validation v0.0.10 // indirect
 )

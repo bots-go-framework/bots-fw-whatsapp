@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/dal-go/dalgo/dal"
 )
 
 // SubjectStore maps a wamid to a subject string for correlating template
@@ -72,49 +70,4 @@ func (s *memorySubjectStore) GetSubject(_ context.Context, botID, wamid string) 
 		return "", false, nil
 	}
 	return entry.subject, true, nil
-}
-
-// waSubjectData is the dalgo record data for a subject mapping.
-type waSubjectData struct {
-	Subject   string    `firestore:"subject" json:"subject"`
-	ExpiresAt time.Time `firestore:"expiresAt" json:"expiresAt"`
-}
-
-// dalgoSubjectStore is a dalgo-backed implementation of SubjectStore.
-type dalgoSubjectStore struct {
-	db dal.DB
-}
-
-const waSubjectsCollection = "waSubjects"
-
-// NewDalgoSubjectStore returns a SubjectStore backed by db.
-func NewDalgoSubjectStore(db dal.DB) SubjectStore {
-	return &dalgoSubjectStore{db: db}
-}
-
-// PutSubject implements SubjectStore.
-func (s *dalgoSubjectStore) PutSubject(ctx context.Context, botID, wamid, subject string, expiresAt time.Time) error {
-	key := dal.NewKeyWithID(waSubjectsCollection, subjectKey(botID, wamid))
-	data := &waSubjectData{Subject: subject, ExpiresAt: expiresAt}
-	record := dal.NewRecordWithData(key, data)
-	return s.db.RunReadwriteTransaction(ctx, func(ctx context.Context, tx dal.ReadwriteTransaction) error {
-		return tx.Set(ctx, record)
-	})
-}
-
-// GetSubject implements SubjectStore.
-func (s *dalgoSubjectStore) GetSubject(ctx context.Context, botID, wamid string) (subject string, found bool, err error) {
-	key := dal.NewKeyWithID(waSubjectsCollection, subjectKey(botID, wamid))
-	data := &waSubjectData{}
-	record := dal.NewRecordWithData(key, data)
-	if err = s.db.Get(ctx, record); err != nil {
-		if dal.IsNotFound(err) {
-			return "", false, nil
-		}
-		return "", false, err
-	}
-	if time.Now().After(data.ExpiresAt) {
-		return "", false, nil
-	}
-	return data.Subject, true, nil
 }

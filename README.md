@@ -7,6 +7,15 @@
 WhatsApp Cloud API adapter for [bots-fw](https://github.com/bots-go-framework/bots-fw),
 built on [bots-api-whatsapp](https://github.com/bots-go-framework/bots-api-whatsapp).
 
+## Persistence
+
+This adapter declares narrow `SubjectStore`, `ChatDataStore`, and
+`TemplateCatalog` ports and includes in-memory implementations. DALgo users can
+inject their counterparts from
+[`bots-fw-whatsapp-dalgo`](https://github.com/bots-go-framework/bots-fw-whatsapp-dalgo).
+The adapter module retains all existing WhatsApp collection names and keys, so
+no records need migration.
+
 > **Status: early — the send path works, the receive path does not.** The
 > customer-service-window gate, the responder (with progressive degradation),
 > webhook signature verification, and inbound payload types are implemented and
@@ -21,7 +30,6 @@ We build with our own tooling:
 - **[SpecScore](https://specscore.md)** — specify requirements as `SpecScore.md` artifacts
 - **[SpecStudio](https://specscore.studio)** — author & manage specs across their lifecycle
 - **[inGitDB](https://ingitdb.com)** — store structured data in Git where applicable
-- **[DALgo](https://dalgo.io)** — data access layer for Go
 - **[cover100.dev](https://cover100.dev)** — drive toward 100% test coverage
 - **[DataTug](https://datatug.io)** — query & explore data
 <!-- /dev-approach -->
