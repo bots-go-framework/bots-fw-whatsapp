@@ -2,10 +2,16 @@ github.com/bots-go-framework/bots-api-whatsapp v0.3.1 h1:yzMFz4wdWwDf3hi1rQ7uloi
 github.com/bots-go-framework/bots-api-whatsapp v0.3.1/go.mod h1:Xy6RhbX7z1F6Nc2nGIitzbSxScjNvBrS93nu7ZhLpOA=
 github.com/bots-go-framework/bots-fw v0.76.1 h1:3VmlPjKbUqU+ktOgLT02sUeQaEC6imjSgYjlgsXH41M=
 github.com/bots-go-framework/bots-fw v0.76.1/go.mod h1:gaVE8BOn9IUdCwbk38ik6RQ5SGBoeMNAyg9li6yBoO0=
+github.com/bots-go-framework/bots-fw v0.77.8 h1:48apRreosjFZGCWEZtSSpyfk4keowvrd1lizYA6eW1o=
+github.com/bots-go-framework/bots-fw v0.77.8/go.mod h1:hdP6ul15vjP31wVz/ycPkNu9nwYGhyizlvj8ZR9Tvc0=
 github.com/bots-go-framework/bots-fw-store v0.12.0 h1:oz2tCpsiTZ2WdeQhkG3H4vq44N24kxBUzXg1ie2nrRU=
 github.com/bots-go-framework/bots-fw-store v0.12.0/go.mod h1:0yS6Pg516jHIrIInv+kvWRWxXNGGqR4tlvRua8GfT20=
+github.com/bots-go-framework/bots-fw-store v0.14.1 h1:uo+jEI16A/7oiZzxPdom0q1fXXmc/xOsRYypu3CkHGM=
+github.com/bots-go-framework/bots-fw-store v0.14.1/go.mod h1:0yS6Pg516jHIrIInv+kvWRWxXNGGqR4tlvRua8GfT20=
 github.com/bots-go-framework/bots-go-core v0.2.5 h1:Uv9zb23yHJY/GnfEF6ocucAmfS12pwFHiig29ZoSqME=
 github.com/bots-go-framework/bots-go-core v0.2.5/go.mod h1:O/J3Q4HhTpbsbCL87Zhlf1BPtvfVp9UcfBWsc8D8ghw=
+github.com/bots-go-framework/bots-go-core v0.3.0 h1:Jqk8P2ZjfBLihfvKdFybDYIPh9mt/EWULOKObowY910=
+github.com/bots-go-framework/bots-go-core v0.3.0/go.mod h1:O/J3Q4HhTpbsbCL87Zhlf1BPtvfVp9UcfBWsc8D8ghw=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
