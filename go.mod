@@ -16,3 +16,5 @@ require (
 	github.com/strongo/slice v0.3.5 // indirect
 	github.com/strongo/validation v0.0.10 // indirect
 )
+
+replace github.com/bots-go-framework/bots-fw => ../bots-fw
