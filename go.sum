@@ -1,5 +1,7 @@
 github.com/bots-go-framework/bots-api-whatsapp v0.3.1 h1:yzMFz4wdWwDf3hi1rQ7uloiTiajt49YGYYmbzgDUjVQ=
 github.com/bots-go-framework/bots-api-whatsapp v0.3.1/go.mod h1:Xy6RhbX7z1F6Nc2nGIitzbSxScjNvBrS93nu7ZhLpOA=
+github.com/bots-go-framework/bots-api-whatsapp v0.3.4 h1:LejY9fe/BS+epZv1qvUV7epPTmvBQFcWcSlQ3uWstxo=
+github.com/bots-go-framework/bots-api-whatsapp v0.3.4/go.mod h1:SGIEbSGqoIp9/pyfj5BEggsxjiSoJ8ZbG5wp6mAaKbk=
 github.com/bots-go-framework/bots-fw v0.76.1 h1:3VmlPjKbUqU+ktOgLT02sUeQaEC6imjSgYjlgsXH41M=
 github.com/bots-go-framework/bots-fw v0.76.1/go.mod h1:gaVE8BOn9IUdCwbk38ik6RQ5SGBoeMNAyg9li6yBoO0=
 github.com/bots-go-framework/bots-fw v0.77.8 h1:48apRreosjFZGCWEZtSSpyfk4keowvrd1lizYA6eW1o=
@@ -14,6 +16,8 @@ github.com/bots-go-framework/bots-go-core v0.2.5 h1:Uv9zb23yHJY/GnfEF6ocucAmfS12
 github.com/bots-go-framework/bots-go-core v0.2.5/go.mod h1:O/J3Q4HhTpbsbCL87Zhlf1BPtvfVp9UcfBWsc8D8ghw=
 github.com/bots-go-framework/bots-go-core v0.3.0 h1:Jqk8P2ZjfBLihfvKdFybDYIPh9mt/EWULOKObowY910=
 github.com/bots-go-framework/bots-go-core v0.3.0/go.mod h1:O/J3Q4HhTpbsbCL87Zhlf1BPtvfVp9UcfBWsc8D8ghw=
+github.com/bots-go-framework/bots-go-core v0.3.3 h1:OUvC8NcqEFH1RpMTAAWmtkkuiL+tG3/Ddk9ZSs9QssI=
+github.com/bots-go-framework/bots-go-core v0.3.3/go.mod h1:kBdKbG7avpQa6MX4zgO0mFhzzngyGWzCbEOnZv96LKE=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
@@ -26,6 +30,8 @@ github.com/strongo/i18n v0.8.15 h1:wyIERaWLO8dySu8cqWMMVz9GpK819LOoUZLfLl6Er70=
 github.com/strongo/i18n v0.8.15/go.mod h1:qHRBffF+LH5RgJKoCmXtz3dZ5AmVeKAVo+hzwL8nxTQ=
 github.com/strongo/logus v0.4.1 h1:jEkcT5JzawDYjexRVHkCQiG4tv6Bm2a/c/ZdLk0IPqM=
 github.com/strongo/logus v0.4.1/go.mod h1:sd8gjJklqGQAg+Q0mlP5MWgzguAuxR25YYFSkfVOPdc=
+github.com/strongo/logus v0.4.4 h1:zv0t1tSCE1pHEOpmZnlwKRDb8pfxaCeP/Hk2PCj6swg=
+github.com/strongo/logus v0.4.4/go.mod h1:mVugDWLg/FXFiNAunrt+gvuEJtsSeCgwosU22FV1myY=
 github.com/strongo/slice v0.3.5 h1:8qbn5ll6DBf0eIZ2KtQm1xbmKOr5+FgXZIShz3Qg5to=
 github.com/strongo/slice v0.3.5/go.mod h1:Tymvuhp8oV6T4vswWR4F/JmGFxOcMWFTM5qp0WlV0sk=
 github.com/strongo/validation v0.0.10 h1:DDydmPl6O8YmRmSEtz7VimX6k0Q3Vs1CsUEWqtZg9oc=
