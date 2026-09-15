@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.27.1
 
 require (
-	github.com/bots-go-framework/bots-api-whatsapp v0.3.4
+	github.com/bots-go-framework/bots-api-whatsapp v0.3.5
 	github.com/bots-go-framework/bots-fw v0.77.9
 	github.com/bots-go-framework/bots-fw-store v0.14.1
 	github.com/bots-go-framework/bots-go-core v0.3.3
