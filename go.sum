@@ -2,6 +2,8 @@ github.com/bots-go-framework/bots-api-whatsapp v0.3.1 h1:yzMFz4wdWwDf3hi1rQ7uloi
 github.com/bots-go-framework/bots-api-whatsapp v0.3.1/go.mod h1:Xy6RhbX7z1F6Nc2nGIitzbSxScjNvBrS93nu7ZhLpOA=
 github.com/bots-go-framework/bots-api-whatsapp v0.3.4 h1:LejY9fe/BS+epZv1qvUV7epPTmvBQFcWcSlQ3uWstxo=
 github.com/bots-go-framework/bots-api-whatsapp v0.3.4/go.mod h1:SGIEbSGqoIp9/pyfj5BEggsxjiSoJ8ZbG5wp6mAaKbk=
+github.com/bots-go-framework/bots-api-whatsapp v0.3.5 h1:NAARTKjACiOUDYh6S2FaNKKFuSFtAREgYIfRUIRDEk0=
+github.com/bots-go-framework/bots-api-whatsapp v0.3.5/go.mod h1:kJF5ZAv7kFCxYXNElG8G7kS1+EkIc+LJgBYt3GIVPhk=
 github.com/bots-go-framework/bots-fw v0.76.1 h1:3VmlPjKbUqU+ktOgLT02sUeQaEC6imjSgYjlgsXH41M=
 github.com/bots-go-framework/bots-fw v0.76.1/go.mod h1:gaVE8BOn9IUdCwbk38ik6RQ5SGBoeMNAyg9li6yBoO0=
 github.com/bots-go-framework/bots-fw v0.77.8 h1:48apRreosjFZGCWEZtSSpyfk4keowvrd1lizYA6eW1o=
