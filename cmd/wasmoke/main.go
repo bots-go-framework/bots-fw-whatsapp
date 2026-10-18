@@ -50,22 +50,37 @@ import (
 
 const botID = "wasmoke"
 
-func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+var (
+	exit           = os.Exit
+	listenAndServe = func(srv *http.Server) error {
+		return srv.ListenAndServe()
 	}
-	switch os.Args[1] {
+	newClient = func(accessToken, phoneNumberID string) *wabotapi.Client {
+		return wabotapi.NewClient(accessToken, phoneNumberID)
+	}
+)
+
+func main() {
+	exit(run(os.Args[1:]))
+}
+
+func run(args []string) int {
+	if len(args) < 1 {
+		usage()
+		return 2
+	}
+	switch args[0] {
 	case "serve":
-		os.Exit(cmdServe(os.Args[2:]))
+		return cmdServe(args[1:])
 	case "send":
-		os.Exit(cmdSend(os.Args[2:]))
+		return cmdSend(args[1:])
 	case "help", "-h", "--help":
 		usage()
+		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
 		usage()
-		os.Exit(2)
+		return 2
 	}
 }
 
@@ -145,7 +160,7 @@ func cmdServe(_ []string) int {
 
 	// A read timeout the body-size cap complements; the handler itself caps the body.
 	srv := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	if err := srv.ListenAndServe(); err != nil {
+	if err := listenAndServe(srv); err != nil {
 		fmt.Fprintf(os.Stderr, "server stopped: %v\n", err)
 		return 1
 	}
@@ -221,7 +236,7 @@ func cmdSend(args []string) int {
 		return 2
 	}
 
-	client := wabotapi.NewClient(env["WA_ACCESS_TOKEN"], env["WA_PHONE_NUMBER_ID"])
+	client := newClient(env["WA_ACCESS_TOKEN"], env["WA_PHONE_NUMBER_ID"])
 	if v := os.Getenv("WA_GRAPH_VERSION"); v != "" {
 		client.GraphVersion = v
 	}
