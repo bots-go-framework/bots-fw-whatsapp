@@ -153,10 +153,45 @@ func testTemplateCatalog(t *testing.T, newCatalog func() TemplateCatalog) {
 			t.Fatal("SetStatus: expected found=false for unknown name, got true")
 		}
 	})
+
+	t.Run("Upsert_replace_existing", func(t *testing.T) {
+		cat := newCatalog()
+		def := TemplateDef{
+			Name:   "welcome_user",
+			Locale: "en",
+			Status: TemplateStatusPending,
+		}
+		if err := cat.Upsert(ctx, "welcome", def); err != nil {
+			t.Fatalf("Upsert error: %v", err)
+		}
+		def.Status = TemplateStatusApproved
+		if err := cat.Upsert(ctx, "welcome", def); err != nil {
+			t.Fatalf("Upsert update error: %v", err)
+		}
+		got, found, err := cat.Get(ctx, "welcome", "en")
+		if err != nil || !found {
+			t.Fatalf("Get error: %v, found=%v", err, found)
+		}
+		if got.Status != TemplateStatusApproved {
+			t.Fatalf("expected Status Approved, got %v", got.Status)
+		}
+	})
 }
 
 func TestMemoryTemplateCatalog(t *testing.T) {
 	testTemplateCatalog(t, func() TemplateCatalog {
 		return NewMemoryTemplateCatalog()
 	})
+}
+
+func TestMemoryTemplateCatalog_SetStatus_defs_mismatch(t *testing.T) {
+	c := NewMemoryTemplateCatalog().(*memoryTemplateCatalog)
+	c.byName["ghost"] = "missing_purpose"
+	found, err := c.SetStatus(context.Background(), "ghost", TemplateStatusApproved)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Fatal("expected found=false")
+	}
 }

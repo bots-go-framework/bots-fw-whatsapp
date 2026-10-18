@@ -38,5 +38,24 @@ jobs:
       # The shared semantic-release step currently requires package.json even
       # for Go-only modules. Keep CI green and publish explicit v0 tags.
       disable-version-bumping: true
+      code_coverage: true
+      min_test_coverage_percent: 100
     secrets:
       gh_token: ${{ secrets.GITHUB_TOKEN }}
+
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests with coverage
+        run: |
+          go test -v -coverprofile=coverage.out ./...
+          awk 'NR>1 && $NF==0 {print; bad=1} END{exit bad}' coverage.out
