@@ -2,14 +2,14 @@ module github.com/bots-go-framework/bots-fw-whatsapp
 
 go 1.26.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
-	github.com/bots-go-framework/bots-api-whatsapp v0.3.10
+	github.com/bots-go-framework/bots-api-whatsapp v0.3.12
 	github.com/bots-go-framework/bots-fw v0.77.9
 	github.com/bots-go-framework/bots-fw-store v0.14.2
-	github.com/bots-go-framework/bots-go-core v0.3.7
-	github.com/strongo/logus v0.4.8
+	github.com/bots-go-framework/bots-go-core v0.3.8
+	github.com/strongo/logus v0.4.9
 )
 
 require (
